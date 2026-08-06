@@ -1,8 +1,0 @@
-{
-  "name": "English Practice App with AI Tutor",
-  "description": "An interactive voice-based English learning application simulating a phone call with an AI tutor.",
-  "requestFramePermissions": [
-    "microphone"
-  ],
-  "majorCapabilities": []
-}
