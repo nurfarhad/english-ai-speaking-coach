@@ -83,14 +83,16 @@ const MetricCard = ({
   );
 };
 
-const HeatmapItem: React.FC<{ value: number }> = ({ value }) => {
-  const opacity = 0.1 + (value / 100) * 0.9;
+const HeatmapItem: React.FC<{ value: number; turnNumber?: number }> = ({ value, turnNumber }) => {
+  const opacity = Math.max(0.25, Math.min(1, value / 100));
   return (
     <div 
-      className="aspect-square rounded-md border border-white/5 transition-transform hover:scale-110 cursor-help"
-      style={{ backgroundColor: `rgba(96, 165, 250, ${opacity})` }}
-      title={`Pronunciation Accuracy: ${value}%`}
-    />
+      className="aspect-square rounded-md border border-white/10 transition-transform hover:scale-110 cursor-help flex items-center justify-center text-[10px] font-bold text-white/90"
+      style={{ backgroundColor: `rgba(16, 185, 129, ${opacity})` }}
+      title={turnNumber ? `Turn ${turnNumber}: ${value}% accuracy` : `Pronunciation Accuracy: ${value}%`}
+    >
+      {turnNumber}
+    </div>
   );
 };
 
@@ -98,8 +100,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClose, onRetry }) => 
   const [showShare, setShowShare] = useState(false);
   const chartData = report.performanceData.map((val, i) => ({
     name: `Turn ${i + 1}`,
-    value: val,
-    engagement: 40 + (Math.random() * 50) // Mock engagement secondary curve
+    value: val
   }));
 
   return (
@@ -131,6 +132,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClose, onRetry }) => 
                 {onRetry && report.isError && (
                   <button 
                     onClick={onRetry}
+                    aria-label="Retry speech analysis"
                     className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-[#131314] rounded-2xl transition-all flex items-center gap-2 font-bold text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/20 group"
                   >
                       <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-500" />
@@ -140,6 +142,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClose, onRetry }) => 
                 {!report.isError && (
                   <button 
                     onClick={() => setShowShare(true)}
+                    aria-label="Share performance report"
                     className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl transition-all flex items-center gap-2 font-bold text-xs uppercase tracking-widest shadow-xl shadow-orange-600/20 group"
                   >
                       <Share2 size={14} className="group-hover:scale-110 transition-transform" />
@@ -148,6 +151,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClose, onRetry }) => 
                 )}
                 <button 
                     onClick={onClose}
+                    aria-label="Return to scenarios"
                     className="px-6 py-3 bg-[#2a2a2c] hover:bg-[#333] text-white rounded-2xl transition-all flex items-center gap-2 font-bold text-xs uppercase tracking-widest border border-white/10"
                 >
                     <X size={14} />
@@ -245,16 +249,12 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClose, onRetry }) => 
                          <div className="flex items-center justify-between mb-8">
                             <div>
                                 <h3 className="text-lg font-bold text-white uppercase tracking-widest">Conversation Performance</h3>
-                                <p className="text-sm text-gray-500">Your flow and accuracy over time</p>
+                                <p className="text-sm text-gray-400">Measured turn-by-turn AI evaluation score</p>
                             </div>
                             <div className="flex gap-4">
                                 <div className="flex items-center gap-2">
                                     <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                    <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">Fluency</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
-                                    <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">Energy</span>
+                                    <span className="text-xs text-emerald-400 font-bold uppercase tracking-widest">Turn Accuracy</span>
                                 </div>
                             </div>
                          </div>
@@ -267,20 +267,15 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClose, onRetry }) => 
                                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
                                             <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                                         </linearGradient>
-                                        <linearGradient id="colorEngage" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#f97316" stopOpacity={0.1}/>
-                                            <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
-                                        </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2a2a2c" />
-                                    <XAxis dataKey="name" stroke="#555" fontSize={10} axisLine={false} tickLine={false} dy={10} />
+                                    <XAxis dataKey="name" stroke="#777" fontSize={11} axisLine={false} tickLine={false} dy={10} />
                                     <YAxis hide domain={[0, 100]} />
                                     <Tooltip 
-                                      contentStyle={{ backgroundColor: '#1a1a1c', border: '1px solid #333', borderRadius: '16px' }}
-                                      itemStyle={{ fontSize: '10px', fontWeight: '900' }}
+                                      contentStyle={{ backgroundColor: '#1a1a1c', border: '1px solid #444', borderRadius: '16px' }}
+                                      itemStyle={{ fontSize: '12px', fontWeight: '700', color: '#10b981' }}
                                     />
-                                    <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={5} fillOpacity={1} fill="url(#colorValue)" />
-                                    <Area type="monotone" dataKey="engagement" stroke="#f97316" strokeWidth={2} fillOpacity={1} fill="url(#colorEngage)" strokeDasharray="5 5" />
+                                    <Area type="monotone" dataKey="value" name="Turn Score" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#colorValue)" />
                                 </AreaChart>
                             </ResponsiveContainer>
                          </div>
@@ -295,33 +290,46 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClose, onRetry }) => 
                          <div className="bg-[#1e1e20] rounded-[32px] p-8 border border-[#333] shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-[50px] group-hover:bg-emerald-500/10 transition-colors"></div>
                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="font-bold text-white tracking-tight uppercase tracking-widest text-[10px]">Speech Integrity</h3>
+                                <div>
+                                    <h3 className="font-bold text-white tracking-tight uppercase tracking-widest text-xs">Turn Consistency</h3>
+                                    <p className="text-[11px] text-gray-400 mt-0.5">Real AI scores per turn</p>
+                                </div>
                                 <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400">
                                     <BarChart2 size={16} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-6 gap-2">
-                                {Array.from({ length: 24 }).map((_, i) => (
-                                    <HeatmapItem key={i} value={70 + Math.random() * 30} />
-                                ))}
-                            </div>
-                            <p className="mt-6 text-[10px] font-black tracking-[0.2em] text-gray-400 leading-relaxed italic uppercase">
-                              Precision Mapping Active
+                            {report.performanceData.length > 0 ? (
+                                <div className="grid grid-cols-6 gap-2">
+                                    {report.performanceData.map((val, i) => (
+                                        <HeatmapItem key={i} value={val} turnNumber={i + 1} />
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center text-xs text-gray-400">
+                                    Single-turn session evaluated
+                                </div>
+                            )}
+                            <p className="mt-6 text-[11px] font-bold tracking-wider text-gray-300 leading-relaxed uppercase">
+                              {report.performanceData.length > 0 
+                                ? `${report.performanceData.length} Evaluated Turns Recorded` 
+                                : `Overall Accuracy: ${report.score}%`}
                             </p>
                           </div>
                           <div className="bg-gradient-to-br from-[#060706] to-[#1a1a1c] rounded-[40px] p-10 text-white shadow-2xl border border-white/10 relative overflow-hidden group">
                              <div className="absolute top-0 right-0 p-8 opacity-20 transform group-hover:scale-110 transition-transform text-orange-500">
                                 <RefreshCw size={50} />
                              </div>
-                             <h3 className="font-bold text-[10px] text-orange-500 mb-3 uppercase tracking-widest">Pacing Index</h3>
+                             <h3 className="font-bold text-xs text-orange-400 mb-3 uppercase tracking-widest">Pacing Index</h3>
                              <div className="text-4xl font-bold mb-2 tracking-tight uppercase">
-                                {report.pacingScore >= 80 ? 'Master' : 'Fluid'}
+                                {report.pacingScore >= 80 ? 'Optimal' : report.pacingScore >= 60 ? 'Steady' : 'Developing'}
                              </div>
-                             <p className="text-xs text-gray-400 font-bold uppercase tracking-wide">Stable cadence maintained throughout</p>
+                             <p className="text-xs text-gray-300 font-medium leading-relaxed">
+                                {report.pacingScore >= 80 ? 'Natural conversational cadence maintained.' : 'Practice pausing naturally between sentences.'}
+                             </p>
                              <div className="mt-8 flex items-center justify-between">
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">WPM Velocity</span>
-                                    <span className="font-bold text-xl text-emerald-400">142</span>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Target Cadence</span>
+                                    <span className="font-bold text-lg text-emerald-400">130–150 WPM</span>
                                 </div>
                                 <div className="w-16 h-16 rounded-3xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center font-bold text-xl text-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.1)]">
                                     {report.pacingScore}

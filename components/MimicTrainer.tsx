@@ -102,7 +102,11 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                             <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Accent Mastery Trainer</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-gray-500 hover:text-white transition-colors">
+                    <button 
+                        onClick={onClose} 
+                        aria-label="Close speech lab"
+                        className="p-2 hover:bg-white/5 rounded-full text-gray-500 hover:text-white transition-colors"
+                    >
                         <X size={20} />
                     </button>
                 </div>
@@ -122,6 +126,7 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                         <div className="flex justify-center">
                             <button 
                                 onClick={playNative}
+                                aria-label="Hear native pronunciation"
                                 className="flex items-center gap-3 px-6 py-3 bg-white/5 hover:bg-white/10 rounded-2xl text-emerald-400 font-bold text-sm transition-colors border border-white/5 uppercase tracking-widest"
                             >
                                 <Headphones size={16} />
@@ -155,8 +160,12 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                                     <button 
                                         onMouseDown={startRecording}
                                         onMouseUp={stopRecording}
+                                        onMouseLeave={isRecording ? stopRecording : undefined}
                                         onTouchStart={startRecording}
                                         onTouchEnd={stopRecording}
+                                        onTouchCancel={isRecording ? stopRecording : undefined}
+                                        aria-label={isRecording ? "Release to analyze recording" : "Press and hold to record pronunciation"}
+                                        aria-pressed={isRecording}
                                         className={`w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-2xl relative ${isRecording ? 'bg-orange-600 scale-110 shadow-orange-600/40' : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-600/40'}`}
                                     >
                                         <AnimatePresence>
@@ -206,10 +215,26 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                                         </div>
                                     )}
                                     <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                                        <ProsodyBar label="Stress" value={85} color="bg-blue-500" />
-                                        <ProsodyBar label="Rhythm" value={lastAttempt.prosodyScore} color="bg-emerald-500" />
-                                        <ProsodyBar label="Pitch" value={70} color="bg-purple-500" />
-                                        <ProsodyBar label="Pacing" value={92} color="bg-amber-500" />
+                                        <ProsodyBar 
+                                            label="Stress" 
+                                            value={lastAttempt.metrics?.stress ?? lastAttempt.prosodyScore} 
+                                            color="bg-blue-500" 
+                                        />
+                                        <ProsodyBar 
+                                            label="Rhythm" 
+                                            value={lastAttempt.metrics?.rhythm ?? lastAttempt.prosodyScore} 
+                                            color="bg-emerald-500" 
+                                        />
+                                        <ProsodyBar 
+                                            label="Pitch" 
+                                            value={lastAttempt.metrics?.pitchRange ?? lastAttempt.prosodyScore} 
+                                            color="bg-purple-500" 
+                                        />
+                                        <ProsodyBar 
+                                            label="Pacing" 
+                                            value={lastAttempt.metrics?.pacing ?? lastAttempt.prosodyScore} 
+                                            color="bg-amber-500" 
+                                        />
                                     </div>
                                 </div>
 
@@ -217,21 +242,21 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                                     <h3 className="font-bold text-white text-sm uppercase tracking-widest">Phoneme Breakdown</h3>
                                     <div className="bg-[#131314] rounded-2xl p-6 border border-white/10 flex flex-wrap gap-4">
                                         {lastAttempt.phonemeFeedback.map((p, i) => (
-                                            <div key={i} className="flex flex-col items-center gap-1 group cursor-help">
+                                            <div key={i} className="relative flex flex-col items-center gap-1 group cursor-help">
                                                 <span className={`text-lg font-mono font-bold ${p.score > 80 ? 'text-emerald-400' : 'text-amber-400'}`}>/{p.phoneme}/</span>
                                                 <div className="h-1 w-6 rounded-full bg-gray-800 overflow-hidden">
                                                     <div className={`h-full ${p.score > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${p.score}%` }} />
                                                 </div>
                                                 {p.suggestion && (
-                                                    <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bg-black p-2 rounded text-[10px] text-gray-400 -mt-20 pointer-events-none border border-white/10 w-24">
+                                                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/95 backdrop-blur-md p-2 rounded-lg text-[10px] text-gray-300 pointer-events-none border border-white/15 w-32 shadow-xl z-20">
                                                         {p.suggestion}
                                                     </div>
                                                 )}
                                             </div>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-gray-400 italic leading-relaxed uppercase">
-                                        Focus on the 'th' sound; place your tongue behind your front teeth slightly more.
+                                    <p className="text-xs text-gray-300 italic leading-relaxed">
+                                        {lastAttempt.coachingTip || "Focus on natural stress and clear vowel elongation to match native rhythm."}
                                     </p>
                                 </div>
                             </motion.div>

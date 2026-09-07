@@ -97,6 +97,8 @@ export interface MimicAttempt {
     userAudioUrl?: string;
     nativeAudioUrl?: string;
     prosodyScore: number;
+    metrics?: ProsodyMetrics;
+    coachingTip?: string;
     phonemeFeedback: Array<{
         phoneme: string;
         score: number; // 0-100

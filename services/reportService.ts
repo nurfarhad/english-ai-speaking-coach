@@ -207,15 +207,27 @@ export async function analyzeMimicAttempt(apiKey: string, phrase: string, audioB
     INSTRUCTIONS:
     1. Listen to the provided audio.
     2. Transcribe what the user said.
-    3. Compare their pronunciation, rhythm, and stress to the target phrase.
-    4. Provide a 'prosodyScore' (0-100) reflecting how natural and accurate it sounds.
-    5. Breakdown the feedback by phoneme clusters or specific sounds.
-    6. For each sound cluster, provide a score (0-100) and a helpful 'suggestion' on how to improve.
+    3. Compare their pronunciation, rhythm, pitch modulation, and stress placement to the target phrase.
+    4. Provide an overall 'prosodyScore' (0-100) reflecting how natural and accurate it sounds.
+    5. Evaluate specific prosody components:
+       - 'stress': syllable and word emphasis accuracy (0-100)
+       - 'rhythm': cadence and natural flow (0-100)
+       - 'pitchRange': natural intonation curve vs robotic monotone (0-100)
+       - 'pacing': speaking speed and pause placement (0-100)
+    6. Provide a concise, actionable 'coachingTip' tailored specifically to this phrase and what you heard.
+    7. Breakdown the feedback by phoneme clusters or specific sounds with individual scores (0-100) and suggestions.
 
     Return ONLY JSON:
     {
       "transcription": "string",
       "prosodyScore": number,
+      "metrics": {
+        "stress": number,
+        "rhythm": number,
+        "pitchRange": number,
+        "pacing": number
+      },
+      "coachingTip": "string",
       "phonemeFeedback": [
         { "phoneme": "string", "score": number, "suggestion": "string" }
       ]
@@ -247,14 +259,32 @@ export async function analyzeMimicAttempt(apiKey: string, phrase: string, audioB
     const data = extractAndParseJson<{
       transcription?: string;
       prosodyScore?: number;
+      metrics?: {
+        stress?: number;
+        rhythm?: number;
+        pitchRange?: number;
+        pacing?: number;
+      };
+      coachingTip?: string;
       phonemeFeedback?: Array<{ phoneme: string; score: number; suggestion?: string }>;
     }>(text, { prosodyScore: 0, phonemeFeedback: [] });
     
+    const overallScore = Math.max(0, Math.min(100, data.prosodyScore || 0));
+    const fallbackTip = data.phonemeFeedback?.find(p => p.score < 75)?.suggestion 
+      || `Focus on matching the natural pitch cadence and stress of "${phrase}".`;
+
     return {
         id: Date.now().toString(),
         phrase,
         transcription: data.transcription,
-        prosodyScore: data.prosodyScore || 0,
+        prosodyScore: overallScore,
+        metrics: {
+          stress: Math.max(0, Math.min(100, data.metrics?.stress ?? overallScore)),
+          rhythm: Math.max(0, Math.min(100, data.metrics?.rhythm ?? overallScore)),
+          pitchRange: Math.max(0, Math.min(100, data.metrics?.pitchRange ?? overallScore)),
+          pacing: Math.max(0, Math.min(100, data.metrics?.pacing ?? overallScore))
+        },
+        coachingTip: data.coachingTip || fallbackTip,
         phonemeFeedback: data.phonemeFeedback || [],
         timestamp: new Date()
     };

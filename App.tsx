@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Languages, User, Compass, Zap, Headphones, MessageSquare, BarChart2, Award, ClipboardList, Settings2, Globe, Shield, Mic2, Sparkles, BookOpen, ChevronRight, Check, AlertCircle, X, Lock } from 'lucide-react';
+import { Languages, User, Compass, Zap, Headphones, MessageSquare, BarChart2, Award, ClipboardList, Settings2, Globe, Shield, Mic2, Sparkles, BookOpen, ChevronRight, Check, AlertCircle, X, Lock, Sliders } from 'lucide-react';
 import { PracticeLanguage, CallState, VoiceName, Scenario, VoiceConfig, TranscriptItem, AnalysisReport, SavedWord, RealTimeMetrics, UserStats, UserMemory, SpeakLikeStyle } from './types';
 import { LiveClient } from './services/liveClient';
 import { generateAnalysisReport, analyzeMimicAttempt, updateUserMemory } from './services/reportService';
@@ -104,7 +104,8 @@ const App: React.FC = () => {
   const [report, setReport] = useState<AnalysisReport | null>(null);
 
   const [mimicPhrase, setMimicPhrase] = useState<string | null>(null);
-  const [showStats, setShowStats] = useState(false);
+  const [showMobileSetup, setShowMobileSetup] = useState(false);
+  const [hasUnreadInsights, setHasUnreadInsights] = useState(true);
   const [activeTab, setActiveTab] = useState<'scenarios' | 'stats' | 'coach' | 'pronunciation'>('scenarios');
   const [userStats, setUserStats] = useState<UserStats>(initialUserData.stats);
 
@@ -243,6 +244,18 @@ const App: React.FC = () => {
   const timerRef = useRef<number | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>([]);
   const durationRef = useRef<number>(0);
+  const createdUrlsRef = useRef<Set<string>>(new Set());
+
+  const cleanupAudioUrls = useCallback(() => {
+    createdUrlsRef.current.forEach(url => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore errors if already revoked
+      }
+    });
+    createdUrlsRef.current.clear();
+  }, []);
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -257,7 +270,7 @@ const App: React.FC = () => {
     isUserSpeakingRef.current = isUserSpeaking;
   }, [isUserSpeaking]);
 
-  // Audio and timer cleanup on component unmount
+  // Audio, timer, and object URL cleanup on component unmount
   useEffect(() => {
     return () => {
       if (liveClientRef.current) {
@@ -268,8 +281,9 @@ const App: React.FC = () => {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      cleanupAudioUrls();
     };
-  }, []);
+  }, [cleanupAudioUrls]);
 
   useEffect(() => {
     if (callState === CallState.ACTIVE) {
@@ -333,6 +347,7 @@ const App: React.FC = () => {
     setCallState(CallState.CONNECTING);
     setErrorMsg(null);
     setTranscript([]);
+    cleanupAudioUrls();
 
     const scenario = overrideScenario || selectedScenario;
     const voice = overrideVoice || selectedVoice;
@@ -403,6 +418,7 @@ const App: React.FC = () => {
       onUserSpeaking: (speaking) => setIsUserSpeaking(speaking),
       onAudioData: (speaker, blob) => {
          const url = URL.createObjectURL(blob);
+         createdUrlsRef.current.add(url);
          setTranscript(prev => {
              // Find the last item from this speaker and attach audio
              const updated = [...prev];
@@ -598,6 +614,7 @@ const App: React.FC = () => {
   };
 
   const reset = () => {
+    cleanupAudioUrls();
     setCallState(CallState.IDLE);
     setVolume(0);
     setDuration(0);
@@ -672,13 +689,40 @@ const App: React.FC = () => {
         
         {/* Left Sidebar - Configuration */}
         {callState === CallState.IDLE && (
-            <div className="w-[360px] border-r border-[#2a2a2c] bg-[#1a1a1c] flex flex-col overflow-hidden shrink-0 shadow-2xl">
+          <>
+            {/* Mobile Setup Floating Pill (shown only on < lg) */}
+            <div className="lg:hidden fixed top-4 right-4 z-40">
+              <button 
+                onClick={() => setShowMobileSetup(prev => !prev)}
+                aria-label="Toggle session setup drawer"
+                aria-expanded={showMobileSetup}
+                className="px-4 py-2 bg-[#1e1e20]/95 backdrop-blur-md text-emerald-400 border border-emerald-500/30 rounded-2xl shadow-2xl flex items-center gap-2 font-bold text-xs uppercase tracking-wider"
+              >
+                <Sliders size={14} />
+                <span>{showMobileSetup ? 'Close' : 'Setup'}</span>
+              </button>
+            </div>
+
+            {/* Sidebar Container */}
+            <div className={`
+              ${showMobileSetup ? 'fixed inset-0 z-50 flex flex-col bg-[#1a1a1c]' : 'hidden'}
+              lg:relative lg:flex lg:w-[360px] border-r border-[#2a2a2c] bg-[#1a1a1c] flex-col overflow-hidden shrink-0 shadow-2xl
+            `}>
                 <div className="p-4 border-b border-[#2a2a2c] flex items-center justify-between bg-[#1e1e20]">
                     <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">SESSION SETUP</h2>
-                    <div className="flex items-center gap-1">
-                        <div className={`w-1 h-1 rounded-full ${setupTab === 'language' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
-                        <div className={`w-1 h-1 rounded-full ${setupTab === 'coach' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
-                        <div className={`w-1 h-1 rounded-full ${setupTab === 'scenario' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1">
+                            <div className={`w-1 h-1 rounded-full ${setupTab === 'language' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                            <div className={`w-1 h-1 rounded-full ${setupTab === 'coach' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                            <div className={`w-1 h-1 rounded-full ${setupTab === 'scenario' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                        </div>
+                        <button 
+                          onClick={() => setShowMobileSetup(false)}
+                          aria-label="Close session setup drawer"
+                          className="lg:hidden p-1 text-gray-400 hover:text-white rounded-lg"
+                        >
+                          <X size={16} />
+                        </button>
                     </div>
                 </div>
 
@@ -920,6 +964,7 @@ const App: React.FC = () => {
                     )}
                 </div>
             </div>
+          </>
         )}
 
         {/* Center Stage - Visualizer or Call Info */}
@@ -935,32 +980,45 @@ const App: React.FC = () => {
                 {callState === CallState.IDLE ? (
                     <div className="z-10 w-full max-w-4xl px-6 animate-fade-in flex flex-col items-center">
                         {/* Tab Switcher */}
-                        <div className="flex gap-1.5 bg-[#1a1a1c] p-1.5 rounded-2xl border border-white/10 mb-12 w-fit shadow-2xl">
+                        <div className="flex gap-1 bg-[#1a1a1c] p-1.5 rounded-2xl border border-white/10 mb-8 sm:mb-12 w-fit max-w-full overflow-x-auto shadow-2xl">
                             <button 
                                 onClick={() => setActiveTab('scenarios')}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center gap-2.5 ${activeTab === 'scenarios' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                aria-label="Explore scenarios library"
+                                aria-pressed={activeTab === 'scenarios'}
+                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-tight transition-all flex items-center gap-2 shrink-0 ${activeTab === 'scenarios' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <Compass size={14} />
                                 Library
                             </button>
                             <button 
                                 onClick={() => setActiveTab('stats')}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2.5 ${activeTab === 'stats' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                aria-label="View speaking performance dashboard"
+                                aria-pressed={activeTab === 'stats'}
+                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 shrink-0 ${activeTab === 'stats' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <BarChart2 size={14} />
                                 Performance
                             </button>
                             <button 
-                                onClick={() => setActiveTab('coach')}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center gap-2.5 relative ${activeTab === 'coach' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                onClick={() => {
+                                    setActiveTab('coach');
+                                    setHasUnreadInsights(false);
+                                }}
+                                aria-label="View personalized AI tutor insights"
+                                aria-pressed={activeTab === 'coach'}
+                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-tight transition-all flex items-center gap-2 relative shrink-0 ${activeTab === 'coach' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <Sparkles size={14} />
                                 Insights
-                                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-orange-500 border-2 border-[#131314]"></span>
+                                {hasUnreadInsights && (
+                                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-orange-500 border-2 border-[#131314]"></span>
+                                )}
                             </button>
                             <button 
                                 onClick={() => setActiveTab('pronunciation')}
-                                className={`px-6 py-2.5 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center gap-2.5 ${activeTab === 'pronunciation' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                aria-label="Open speech lab mimic trainer"
+                                aria-pressed={activeTab === 'pronunciation'}
+                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-tight transition-all flex items-center gap-2 shrink-0 ${activeTab === 'pronunciation' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <Mic2 size={14} />
                                 Speech Lab
@@ -1177,14 +1235,23 @@ const App: React.FC = () => {
             )}
         </div>
 
-        {/* Right Sidebar - Transcript (Visible during call) */}
+        {/* Right Sidebar / Mobile Bottom Sheet - Transcript (Visible during call) */}
         {showTranscript && (callState === CallState.ACTIVE || callState === CallState.CONNECTING) && (
-            <div className="w-96 border-l border-[#444746] bg-[#1a1a1c] flex flex-col overflow-hidden shrink-0 transition-all duration-300">
-                <div className="p-4 border-b border-[#444746] flex justify-between items-center">
-                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Live Transcript</h3>
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            <div className="fixed inset-x-0 bottom-24 max-h-[55vh] z-40 lg:static lg:w-96 lg:max-h-full border-t lg:border-t-0 lg:border-l border-[#444746] bg-[#1a1a1c] flex flex-col overflow-hidden shrink-0 transition-all duration-300 shadow-2xl rounded-t-3xl lg:rounded-none">
+                <div className="p-4 border-b border-[#444746] flex justify-between items-center bg-[#1e1e20]">
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Live Transcript</h3>
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    </div>
+                    <button 
+                      onClick={() => setShowTranscript(false)}
+                      aria-label="Close transcript view"
+                      className="p-1 rounded-lg text-gray-400 hover:text-white lg:hidden"
+                    >
+                      <X size={16} />
+                    </button>
                 </div>
-                <div className="flex-1 overflow-hidden relative">
+                <div className="flex-1 overflow-hidden relative h-64 lg:h-auto">
                     <div className="absolute inset-0">
                         <Transcript 
                             items={transcript} 
@@ -1233,14 +1300,6 @@ const App: React.FC = () => {
             onAttempt={handleMimicAttempt}
             onClose={() => setMimicPhrase(null)}
           />
-      )}
-
-      {/* Stats Dashboard Overlay */}
-      {showStats && (
-        <StatsDashboard 
-          stats={userStats}
-          onClose={() => setShowStats(false)}
-        />
       )}
 
     </div>
