@@ -1,0 +1,10 @@
+{
+  "name": "English AI speaking coach",
+  "description": "An interactive voice-based language learning application featuring AI tutors for English, Arabic, Russian, French, and more.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
