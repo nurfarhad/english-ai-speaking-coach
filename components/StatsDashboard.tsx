@@ -103,7 +103,18 @@ const DailyGoalItem: React.FC<{ goal: DailyGoal }> = ({ goal }) => {
     );
 };
 
-const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, onClose }) => {
+const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, onClose, dailyGoalMinutes, savedWords }) => {
+    const vocabCount = savedWords !== undefined ? savedWords.length : stats.vocabularyMastered;
+    const goals = stats.dailyGoals.map(g => {
+        if (g.type === 'speaking_minutes' && dailyGoalMinutes) {
+            return { ...g, target: dailyGoalMinutes };
+        }
+        if (g.type === 'vocabulary' && savedWords !== undefined) {
+            return { ...g, current: Math.max(g.current, savedWords.length) };
+        }
+        return g;
+    });
+
     return (
         <div className={onClose ? "fixed inset-0 bg-[#131314]/98 backdrop-blur-2xl z-[150] flex items-center justify-center p-6 overflow-y-auto" : "w-full overflow-hidden"}>
             <motion.div 
@@ -143,14 +154,14 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({ stats, onClose }) => {
                             <div className="bg-[#131314] p-6 rounded-[32px] border border-white/5 text-center transition-transform hover:scale-105 group relative overflow-hidden">
                                 <div className="absolute inset-0 bg-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 <Sparkles size={24} className="text-emerald-400 mx-auto mb-2" />
-                                <p className="text-2xl font-bold text-white leading-none">{stats.vocabularyMastered}</p>
+                                <p className="text-2xl font-bold text-white leading-none">{vocabCount}</p>
                                 <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-widest leading-none">Words Mastered</p>
                             </div>
                         </div>
 
                         <div className="w-full space-y-7 bg-[#131314] p-8 rounded-[40px] border border-white/10">
                             <h4 className="text-[11px] font-bold text-gray-400 mb-2 uppercase tracking-widest">Performance Goals</h4>
-                            {stats.dailyGoals.map(goal => (
+                            {goals.map(goal => (
                                 <DailyGoalItem key={goal.id} goal={goal} />
                             ))}
                         </div>

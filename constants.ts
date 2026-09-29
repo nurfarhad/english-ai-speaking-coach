@@ -173,7 +173,7 @@ export const VOICES: VoiceConfig[] = [
     { name: VoiceName.Zephyr, label: 'Zephyr', gender: 'female', description: 'Bright, Energetic and Enthusiastic', personality: 'energetic' },
     { name: VoiceName.Charon, label: 'Charon', gender: 'male', description: 'Authoritative and Strategic', personality: 'networking_coach' },
     { name: VoiceName.Aoede, label: 'Aoede', gender: 'female', description: 'Melodic, Expressive and Soft', personality: 'friendly' },
-    { name: VoiceName.Erebus, label: 'Erebus', gender: 'male', description: 'Serious, Gravelly and Precise', personality: 'impatient' },
+    { name: VoiceName.Leda, label: 'Leda', gender: 'female', description: 'Calm, Thoughtful and Precise', personality: 'impatient' },
 ];
 
 export const DEFAULT_ACHIEVEMENTS = [

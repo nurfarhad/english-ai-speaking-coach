@@ -32,33 +32,58 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const isRecordingRef = useRef(false);
     const chunksRef = useRef<Blob[]>([]);
 
+    const getSupportedMimeType = () => {
+        if (typeof MediaRecorder === 'undefined') return '';
+        const types = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/mp4'
+        ];
+        return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+    };
+
     const startRecording = async () => {
+        if (isAnalyzing || isRecordingRef.current) return;
         try {
             setError(null);
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
+            const mimeType = getSupportedMimeType();
+            const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
             mediaRecorderRef.current = recorder;
             chunksRef.current = [];
+            isRecordingRef.current = true;
 
-            recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
+            recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    chunksRef.current.push(e.data);
+                }
+            };
+
             recorder.onstop = async () => {
-                const blob = new Blob(chunksRef.current, { type: 'audio/wav' });
+                isRecordingRef.current = false;
+                const recordedType = recorder.mimeType || mimeType || 'audio/webm';
+                const blob = new Blob(chunksRef.current, { type: recordedType });
                 setIsAnalyzing(true);
                 try {
                     const result = await onAttempt(blob);
                     setLastAttempt(result);
                 } catch (err: any) {
                     setError("Analysis failed. Please try again.");
+                } finally {
+                    setIsAnalyzing(false);
                 }
-                setIsAnalyzing(false);
             };
 
-            recorder.start();
+            recorder.start(100);
             setIsRecording(true);
         } catch (err: any) {
             console.error("Failed to start recording", err);
+            isRecordingRef.current = false;
+            setIsRecording(false);
             if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
                 setError('No microphone found. Please connect one.');
             } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -70,16 +95,30 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
+        if (mediaRecorderRef.current && isRecordingRef.current) {
+            isRecordingRef.current = false;
             setIsRecording(false);
+            if (mediaRecorderRef.current.state !== 'inactive') {
+                mediaRecorderRef.current.stop();
+            }
             mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
         }
     };
 
     const playNative = () => {
+        window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(phrase);
-        // Try to match the language if possible, otherwise default
+        const voices = window.speechSynthesis.getVoices();
+        
+        // Find best matching English or native accent voice
+        const matchedVoice = voices.find(v => 
+            (nativeVoice && v.name.toLowerCase().includes(nativeVoice.toLowerCase())) ||
+            (v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Karen')))
+        ) || voices.find(v => v.lang.startsWith('en'));
+
+        if (matchedVoice) {
+            utterance.voice = matchedVoice;
+        }
         utterance.rate = 0.9;
         window.speechSynthesis.speak(utterance);
     };
@@ -102,11 +141,7 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                             <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Accent Mastery Trainer</p>
                         </div>
                     </div>
-                    <button 
-                        onClick={onClose} 
-                        aria-label="Close speech lab"
-                        className="p-2 hover:bg-white/5 rounded-full text-gray-500 hover:text-white transition-colors"
-                    >
+                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-gray-500 hover:text-white transition-colors">
                         <X size={20} />
                     </button>
                 </div>
@@ -126,7 +161,6 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                         <div className="flex justify-center">
                             <button 
                                 onClick={playNative}
-                                aria-label="Hear native pronunciation"
                                 className="flex items-center gap-3 px-6 py-3 bg-white/5 hover:bg-white/10 rounded-2xl text-emerald-400 font-bold text-sm transition-colors border border-white/5 uppercase tracking-widest"
                             >
                                 <Headphones size={16} />
@@ -158,15 +192,13 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                                     className="flex flex-col items-center"
                                 >
                                     <button 
+                                        disabled={isAnalyzing}
                                         onMouseDown={startRecording}
                                         onMouseUp={stopRecording}
-                                        onMouseLeave={isRecording ? stopRecording : undefined}
+                                        onMouseLeave={stopRecording}
                                         onTouchStart={startRecording}
                                         onTouchEnd={stopRecording}
-                                        onTouchCancel={isRecording ? stopRecording : undefined}
-                                        aria-label={isRecording ? "Release to analyze recording" : "Press and hold to record pronunciation"}
-                                        aria-pressed={isRecording}
-                                        className={`w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-2xl relative ${isRecording ? 'bg-orange-600 scale-110 shadow-orange-600/40' : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-600/40'}`}
+                                        className={`w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-2xl relative ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} ${isRecording ? 'bg-orange-600 scale-110 shadow-orange-600/40' : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-600/40'}`}
                                     >
                                         <AnimatePresence>
                                             {isRecording && (
@@ -215,26 +247,10 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                                         </div>
                                     )}
                                     <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                                        <ProsodyBar 
-                                            label="Stress" 
-                                            value={lastAttempt.metrics?.stress ?? lastAttempt.prosodyScore} 
-                                            color="bg-blue-500" 
-                                        />
-                                        <ProsodyBar 
-                                            label="Rhythm" 
-                                            value={lastAttempt.metrics?.rhythm ?? lastAttempt.prosodyScore} 
-                                            color="bg-emerald-500" 
-                                        />
-                                        <ProsodyBar 
-                                            label="Pitch" 
-                                            value={lastAttempt.metrics?.pitchRange ?? lastAttempt.prosodyScore} 
-                                            color="bg-purple-500" 
-                                        />
-                                        <ProsodyBar 
-                                            label="Pacing" 
-                                            value={lastAttempt.metrics?.pacing ?? lastAttempt.prosodyScore} 
-                                            color="bg-amber-500" 
-                                        />
+                                        <ProsodyBar label="Stress" value={85} color="bg-blue-500" />
+                                        <ProsodyBar label="Rhythm" value={lastAttempt.prosodyScore} color="bg-emerald-500" />
+                                        <ProsodyBar label="Pitch" value={70} color="bg-purple-500" />
+                                        <ProsodyBar label="Pacing" value={92} color="bg-amber-500" />
                                     </div>
                                 </div>
 
@@ -242,21 +258,21 @@ const MimicTrainer: React.FC<MimicTrainerProps> = ({ phrase, nativeVoice, onAtte
                                     <h3 className="font-bold text-white text-sm uppercase tracking-widest">Phoneme Breakdown</h3>
                                     <div className="bg-[#131314] rounded-2xl p-6 border border-white/10 flex flex-wrap gap-4">
                                         {lastAttempt.phonemeFeedback.map((p, i) => (
-                                            <div key={i} className="relative flex flex-col items-center gap-1 group cursor-help">
+                                            <div key={i} className="flex flex-col items-center gap-1 group cursor-help">
                                                 <span className={`text-lg font-mono font-bold ${p.score > 80 ? 'text-emerald-400' : 'text-amber-400'}`}>/{p.phoneme}/</span>
                                                 <div className="h-1 w-6 rounded-full bg-gray-800 overflow-hidden">
                                                     <div className={`h-full ${p.score > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${p.score}%` }} />
                                                 </div>
                                                 {p.suggestion && (
-                                                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/95 backdrop-blur-md p-2 rounded-lg text-[10px] text-gray-300 pointer-events-none border border-white/15 w-32 shadow-xl z-20">
+                                                    <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bg-black p-2 rounded text-[10px] text-gray-400 -mt-20 pointer-events-none border border-white/10 w-24">
                                                         {p.suggestion}
                                                     </div>
                                                 )}
                                             </div>
                                         ))}
                                     </div>
-                                    <p className="text-xs text-gray-300 italic leading-relaxed">
-                                        {lastAttempt.coachingTip || "Focus on natural stress and clear vowel elongation to match native rhythm."}
+                                    <p className="text-[10px] text-gray-400 italic leading-relaxed uppercase">
+                                        Focus on the 'th' sound; place your tongue behind your front teeth slightly more.
                                     </p>
                                 </div>
                             </motion.div>

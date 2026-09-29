@@ -26,7 +26,7 @@ export enum VoiceName {
   Fenrir = 'Fenrir',
   Zephyr = 'Zephyr',
   Aoede = 'Aoede',
-  Erebus = 'Erebus',
+  Leda = 'Leda',
 }
 
 export type Personality = 'friendly' | 'energetic' | 'professional' | 'impatient' | 'humorous' | 'interviewer' | 'customer_support' | 'networking_coach';
@@ -97,8 +97,6 @@ export interface MimicAttempt {
     userAudioUrl?: string;
     nativeAudioUrl?: string;
     prosodyScore: number;
-    metrics?: ProsodyMetrics;
-    coachingTip?: string;
     phonemeFeedback: Array<{
         phoneme: string;
         score: number; // 0-100
@@ -108,8 +106,6 @@ export interface MimicAttempt {
 }
 
 export interface AnalysisReport {
-    isError?: boolean;
-    errorMessage?: string;
     score: number;
     fluencyScore: number;
     vocabularyScore: number;
@@ -144,6 +140,7 @@ export interface AnalysisReport {
         avoidedStructures: string[];
         progressNote: string;
     };
+    averageWpm?: number;
 }
 
 export interface RealTimeMetrics {

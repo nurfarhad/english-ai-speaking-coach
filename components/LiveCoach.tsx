@@ -48,6 +48,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ metrics, isUserSpeaking }) => {
           color="text-orange-400"
           accent="bg-orange-400"
           suffix="wpm"
+          maxValue={200}
         />
         <MetricCard 
           label="Fluency" 
@@ -56,6 +57,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ metrics, isUserSpeaking }) => {
           color="text-emerald-300"
           accent="bg-emerald-300"
           suffix="%"
+          maxValue={100}
         />
         <MetricCard 
           label="Energy" 
@@ -64,6 +66,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ metrics, isUserSpeaking }) => {
           color="text-orange-500"
           accent="bg-orange-500"
           suffix="pts"
+          maxValue={100}
         />
       </div>
 
@@ -110,7 +113,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ metrics, isUserSpeaking }) => {
   );
 };
 
-const MetricCard = ({ label, value, icon, color, accent, suffix }: { label: string, value: number, icon: React.ReactNode, color: string, accent: string, suffix: string }) => (
+const MetricCard = ({ label, value, icon, color, accent, suffix, maxValue = 100 }: { label: string, value: number, icon: React.ReactNode, color: string, accent: string, suffix: string, maxValue?: number }) => (
   <div className="bg-[#1e1e20] border border-white/10 rounded-3xl p-5 flex flex-col items-center shadow-2xl relative overflow-hidden group">
     <div className={`absolute top-0 right-0 w-12 h-12 ${accent}/5 blur-2xl group-hover:${accent}/10 transition-colors`}></div>
     <div className={`p-2.5 rounded-2xl bg-white/5 mb-3 ${color} shadow-inner`}>
@@ -127,7 +130,7 @@ const MetricCard = ({ label, value, icon, color, accent, suffix }: { label: stri
     {/* Minimal progress bar */}
     <div className="w-full h-1 bg-white/10 rounded-full mt-4 overflow-hidden shadow-inner">
       <motion.div 
-        animate={{ width: `${Math.min(100, (value / (suffix.includes('wpm') ? 200 : 100)) * 100)}%` }}
+        animate={{ width: `${Math.min(100, Math.max(0, (value / (maxValue || 100)) * 100))}%` }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
         className={`h-full ${accent} shadow-[0_0_10px_rgba(0,0,0,0.5)]`}
       />

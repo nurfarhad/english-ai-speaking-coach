@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { AnalysisReport } from '../types';
 
@@ -8,6 +8,59 @@ interface ShareCardProps {
 }
 
 const ShareCard: React.FC<ShareCardProps> = ({ report, onClose }) => {
+    const [downloaded, setDownloaded] = useState(false);
+
+    const handleDownload = () => {
+        const svgContent = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="600" height="750" viewBox="0 0 600 750" style="background:#131314; font-family:system-ui, -apple-system, sans-serif;">
+            <defs>
+                <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#1e1e20"/>
+                    <stop offset="100%" stop-color="#131314"/>
+                </linearGradient>
+            </defs>
+            <rect width="600" height="750" rx="36" fill="url(#bg)" stroke="#333" stroke-width="2"/>
+            <circle cx="300" cy="110" r="45" fill="#10b981"/>
+            <text x="300" y="120" text-anchor="middle" font-size="32" font-weight="bold" fill="#131314">${report.score}</text>
+            <text x="300" y="190" text-anchor="middle" font-size="14" font-weight="bold" fill="#10b981" letter-spacing="3">AI SPEAKING COACH REPORT</text>
+            <text x="300" y="235" text-anchor="middle" font-size="28" font-weight="800" fill="#ffffff">English Fluency Achievement</text>
+            
+            <rect x="60" y="280" width="220" height="110" rx="20" fill="#1e1e20" stroke="#2a2a2c"/>
+            <text x="85" y="320" font-size="12" fill="#888" font-weight="bold" letter-spacing="1">FLUENCY</text>
+            <text x="85" y="365" font-size="34" fill="#10b981" font-weight="bold">${report.fluencyScore}%</text>
+            
+            <rect x="320" y="280" width="220" height="110" rx="20" fill="#1e1e20" stroke="#2a2a2c"/>
+            <text x="345" y="320" font-size="12" fill="#888" font-weight="bold" letter-spacing="1">VOCABULARY</text>
+            <text x="345" y="365" font-size="34" fill="#3b82f6" font-weight="bold">${report.vocabularyScore}%</text>
+
+            <rect x="60" y="410" width="220" height="110" rx="20" fill="#1e1e20" stroke="#2a2a2c"/>
+            <text x="85" y="450" font-size="12" fill="#888" font-weight="bold" letter-spacing="1">ACCENT MATCH</text>
+            <text x="85" y="495" font-size="34" fill="#f59e0b" font-weight="bold">${report.accentMatchScore}%</text>
+            
+            <rect x="320" y="410" width="220" height="110" rx="20" fill="#1e1e20" stroke="#2a2a2c"/>
+            <text x="345" y="450" font-size="12" fill="#888" font-weight="bold" letter-spacing="1">CONFIDENCE</text>
+            <text x="345" y="495" font-size="34" fill="#ec4899" font-weight="bold">${report.confidenceScore}%</text>
+
+            <rect x="60" y="545" width="480" height="85" rx="20" fill="#1e1e20" stroke="#2a2a2c"/>
+            <text x="85" y="580" font-size="12" fill="#10b981" font-weight="bold" letter-spacing="1">SESSION SUMMARY</text>
+            <text x="85" y="608" font-size="13" fill="#ccc">${report.summary.slice(0, 55)}...</text>
+
+            <text x="300" y="695" text-anchor="middle" font-size="13" fill="#666" font-weight="bold" letter-spacing="2">FLUENT AI SPEAKING COACH</text>
+        </svg>`;
+
+        const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `speaking-coach-achievement-${Date.now()}.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setDownloaded(true);
+        setTimeout(() => setDownloaded(false), 2500);
+    };
+
     return (
         <div className="fixed inset-0 bg-[#000]/90 backdrop-blur-3xl z-[200] flex items-center justify-center p-6">
             <motion.div 
@@ -55,9 +108,12 @@ const ShareCard: React.FC<ShareCardProps> = ({ report, onClose }) => {
                     )}
 
                     <div className="space-y-4 w-full">
-                        <button className="w-full py-4 bg-white text-black rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-100 transition-all">
-                             download card
-                             <span className="material-icons-round text-sm">download</span>
+                        <button 
+                            onClick={handleDownload}
+                            className="w-full py-4 bg-white text-black rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-100 transition-all active:scale-[0.98]"
+                        >
+                             {downloaded ? 'card downloaded!' : 'download card'}
+                             <span className="material-icons-round text-sm">{downloaded ? 'check' : 'download'}</span>
                         </button>
                         <button 
                             onClick={onClose}

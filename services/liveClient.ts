@@ -29,10 +29,10 @@ export class LiveClient {
   private analyzer: AnalyserNode | null = null;
   private userAnalyzer: AnalyserNode | null = null;
   private isUserSpeaking = false;
+  private animationFrameId: number | null = null;
   
   // Audio capture for turns
   private modelAudioChunks: Uint8Array[] = [];
-  private mediaRecorder: MediaRecorder | null = null;
   private userAudioChunks: Uint8Array[] = [];
 
   constructor(config: LiveClientConfig) {
@@ -44,6 +44,11 @@ export class LiveClient {
     try {
       this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       this.outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+      // Ensure input context is running (critical for mobile browsers)
+      if (this.inputAudioContext.state === 'suspended') {
+        await this.inputAudioContext.resume();
+      }
       
       this.analyzer = this.outputAudioContext.createAnalyser();
       this.analyzer.fftSize = 256;
@@ -58,11 +63,17 @@ export class LiveClient {
       userSource.connect(this.userAnalyzer);
 
       const sessionPromise = this.ai.live.connect({
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-2.0-flash-live-001',
         callbacks: {
-          onopen: () => {
+          onopen: async () => {
             console.log('Live API Connected');
             this.isConnected = true;
+            if (this.inputAudioContext && this.inputAudioContext.state === 'suspended') {
+              await this.inputAudioContext.resume();
+            }
+            if (this.outputAudioContext && this.outputAudioContext.state === 'suspended') {
+              await this.outputAudioContext.resume();
+            }
             this.config.onOpen();
             this.startAudioInputStream(sessionPromise);
             this.monitorUserSpeaking();
@@ -194,7 +205,9 @@ export class LiveClient {
          this.config.onVolumeChange(0);
       }
 
-      requestAnimationFrame(check);
+      if (this.isConnected) {
+        this.animationFrameId = requestAnimationFrame(check);
+      }
     };
     check();
   }
@@ -236,12 +249,10 @@ export class LiveClient {
         const source = this.outputAudioContext.createBufferSource();
         source.buffer = audioBuffer;
         
-        // Connect to analyzer for visuals, then to destination
-        source.connect(this.analyzer);
-        // We already connected analyzer to destination in constructor, but let's be explicit with gain
+        // Connect through gainNode to analyzer (analyzer is already connected to destination)
         const gainNode = this.outputAudioContext.createGain();
         source.connect(gainNode);
-        gainNode.connect(this.outputAudioContext.destination);
+        gainNode.connect(this.analyzer);
 
         source.start(this.nextStartTime);
         this.nextStartTime += audioBuffer.duration;
@@ -291,6 +302,11 @@ export class LiveClient {
 
   async disconnect() {
     this.isConnected = false;
+
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
     
     if (this.session) {
       const s = await this.session;

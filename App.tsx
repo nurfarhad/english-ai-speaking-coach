@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Languages, User, Compass, Zap, Headphones, MessageSquare, BarChart2, Award, ClipboardList, Settings2, Globe, Shield, Mic2, Sparkles, BookOpen, ChevronRight, Check, AlertCircle, X, Lock, Sliders } from 'lucide-react';
+import { GoogleGenAI } from '@google/genai';
+import { Languages, User, Compass, Zap, Headphones, MessageSquare, BarChart2, Award, ClipboardList, Settings2, Globe, Shield, Mic2, Sparkles, BookOpen, ChevronRight, Check, AlertCircle, X } from 'lucide-react';
 import { PracticeLanguage, CallState, VoiceName, Scenario, VoiceConfig, TranscriptItem, AnalysisReport, SavedWord, RealTimeMetrics, UserStats, UserMemory, SpeakLikeStyle } from './types';
 import { LiveClient } from './services/liveClient';
 import { generateAnalysisReport, analyzeMimicAttempt, updateUserMemory } from './services/reportService';
@@ -16,75 +17,10 @@ import FluencyMeter from './components/FluencyMeter';
 import CallControls from './components/CallControls';
 import { SCENARIOS, VOICES, ACCENTS, API_KEY_ERROR, DEFAULT_ACHIEVEMENTS, DEFAULT_GOALS, PERSONALITIES, SPEAK_LIKE_STYLES, PRACTICE_LANGUAGES } from './constants';
 
-const API_KEY = process.env.GEMINI_API_KEY || '';
+const API_KEY = process.env.GEMINI_API_KEY || (typeof window !== 'undefined' ? (window as any).GEMINI_API_KEY || '' : '');
 const DAILY_GOAL_MINUTES = 15;
 
-/**
- * Initializes UserStats and dailySeconds from localStorage with streak calculation
- * comparing lastActiveDate against the current calendar day.
- */
-function computeInitialUserStats(): { stats: UserStats; dailySecs: number } {
-  const savedStatsStr = localStorage.getItem('user_stats');
-  const savedDailySecsStr = localStorage.getItem('daily_speaking_seconds');
-  const now = new Date();
-
-  let stats: UserStats;
-  if (savedStatsStr) {
-    try {
-      stats = JSON.parse(savedStatsStr);
-    } catch {
-      stats = {
-        xp: 1250,
-        level: 4,
-        streak: 1,
-        lastActiveDate: now.toISOString(),
-        totalSpeakingMinutes: 42,
-        vocabularyMastered: 12,
-        achievements: DEFAULT_ACHIEVEMENTS,
-        dailyGoals: DEFAULT_GOALS
-      };
-    }
-  } else {
-    stats = {
-      xp: 1250,
-      level: 4,
-      streak: 7,
-      lastActiveDate: now.toISOString(),
-      totalSpeakingMinutes: 42,
-      vocabularyMastered: 12,
-      achievements: DEFAULT_ACHIEVEMENTS,
-      dailyGoals: DEFAULT_GOALS
-    };
-  }
-
-  // Real streak calculation comparing lastActiveDate to today
-  const lastActive = new Date(stats.lastActiveDate || now.toISOString());
-  const isSameDay = lastActive.toDateString() === now.toDateString();
-  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const isYesterday = lastActive.toDateString() === yesterday.toDateString();
-
-  let streak = typeof stats.streak === 'number' ? stats.streak : 1;
-  if (!isSameDay && !isYesterday) {
-    // Inactivity for 2 or more days: reset streak
-    streak = 1;
-  }
-  stats.streak = streak;
-
-  let dailySecs = 0;
-  if (isSameDay && savedDailySecsStr) {
-    dailySecs = parseInt(savedDailySecsStr, 10) || 0;
-  } else if (!isSameDay) {
-    // New calendar day: reset daily count
-    dailySecs = 0;
-  } else {
-    dailySecs = 320; // Default first-time seed
-  }
-
-  return { stats, dailySecs };
-}
-
 const App: React.FC = () => {
-  const initialUserData = useMemo(() => computeInitialUserStats(), []);
   const [callState, setCallState] = useState<CallState>(CallState.IDLE);
   const [selectedScenario, setSelectedScenario] = useState<Scenario>(SCENARIOS[0]);
   const [selectedVoice, setSelectedVoice] = useState<VoiceConfig>(VOICES[0]); 
@@ -95,7 +31,14 @@ const App: React.FC = () => {
   
   const [volume, setVolume] = useState(0);
   const [duration, setDuration] = useState(0); // Current call duration in seconds
-  const [dailySeconds, setDailySeconds] = useState(initialUserData.dailySecs);
+  const [dailySeconds, setDailySeconds] = useState<number>(() => {
+    const saved = localStorage.getItem('daily_speaking_seconds');
+    return saved ? parseInt(saved, 10) || 0 : 0;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('daily_speaking_seconds', dailySeconds.toString());
+  }, [dailySeconds]);
   
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -104,19 +47,32 @@ const App: React.FC = () => {
   const [report, setReport] = useState<AnalysisReport | null>(null);
 
   const [mimicPhrase, setMimicPhrase] = useState<string | null>(null);
-  const [showMobileSetup, setShowMobileSetup] = useState(false);
-  const [hasUnreadInsights, setHasUnreadInsights] = useState(true);
   const [activeTab, setActiveTab] = useState<'scenarios' | 'stats' | 'coach' | 'pronunciation'>('scenarios');
-  const [userStats, setUserStats] = useState<UserStats>(initialUserData.stats);
+  
+  const [userStats, setUserStats] = useState<UserStats>(() => {
+    const saved = localStorage.getItem('user_stats');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse user stats", e);
+      }
+    }
+    return {
+      xp: 0,
+      level: 1,
+      streak: 1,
+      lastActiveDate: new Date().toISOString(),
+      totalSpeakingMinutes: 0,
+      vocabularyMastered: 0,
+      achievements: DEFAULT_ACHIEVEMENTS,
+      dailyGoals: DEFAULT_GOALS
+    };
+  });
 
-  // Sync userStats and dailySeconds to localStorage
   useEffect(() => {
     localStorage.setItem('user_stats', JSON.stringify(userStats));
   }, [userStats]);
-
-  useEffect(() => {
-    localStorage.setItem('daily_speaking_seconds', dailySeconds.toString());
-  }, [dailySeconds]);
 
   const [savedWords, setSavedWords] = useState<SavedWord[]>(() => {
     const saved = localStorage.getItem('saved_vocabulary');
@@ -182,38 +138,74 @@ const App: React.FC = () => {
   };
 
   const explainPhrase = async (phrase: string) => {
-    // This could be another AI call, for now we add to current feedback
     setMetrics(prev => ({
         ...prev,
         currentFeedback: `Explaining "${phrase}"...`
     }));
     
-    // Simulate finding a definition
-    setTimeout(() => {
+    try {
+      if (!API_KEY) {
         setMetrics(prev => ({
-            ...prev,
-            currentFeedback: `${phrase}: A resilient person is able to withstand or recover quickly from difficult conditions.`
+          ...prev,
+          currentFeedback: `${phrase}: Useful phrasing for this scenario.`
         }));
-    }, 1500);
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      const res = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: `Explain the phrase or term "${phrase}" in the context of learning ${selectedLanguage.label}. Keep it to 1 concise definition sentence followed by 1 realistic usage example.`
+      });
+      const explanation = res.text?.trim() || `${phrase}: Conversational phrase.`;
+      setMetrics(prev => ({
+        ...prev,
+        currentFeedback: `${phrase}: ${explanation}`
+      }));
+    } catch (e) {
+      setMetrics(prev => ({
+        ...prev,
+        currentFeedback: `${phrase}: Key phrasing to improve conversational fluency.`
+      }));
+    }
   };
 
-  const correctSentence = (item: TranscriptItem) => {
-     // Trigger special feedback for the item
-     setTranscript(prev => prev.map(t => {
-         if (t.id === item.id) {
+  const correctSentence = async (item: TranscriptItem) => {
+     try {
+       if (!API_KEY) return;
+       const ai = new GoogleGenAI({ apiKey: API_KEY });
+       const prompt = `You are an expert ${selectedLanguage.label} coach. Analyze this sentence spoken by the student: "${item.text}". 
+Return ONLY JSON with this structure:
+{
+  "original": "${item.text.replace(/"/g, '\\"')}",
+  "corrected": "better phrased natural sentence",
+  "explanation": "brief 1 sentence explanation of grammar or vocabulary improvement"
+}`;
+       const res = await ai.models.generateContent({
+         model: 'gemini-2.0-flash',
+         contents: prompt
+       });
+       const match = (res.text || '').match(/\{[\s\S]*\}/);
+       const data = match ? JSON.parse(match[0]) : null;
+       if (data) {
+         setTranscript(prev => prev.map(t => {
+           if (t.id === item.id) {
              return {
-                 ...t,
-                 corrections: [
-                     { 
-                         original: item.text.split(' ').slice(0, 3).join(' '), 
-                         corrected: "Better phrased version", 
-                         explanation: "Using more natural phrasing for this scenario."
-                     }
-                 ]
+               ...t,
+               corrections: [
+                 { 
+                   original: data.original || item.text, 
+                   corrected: data.corrected || item.text, 
+                   explanation: data.explanation || "Better phrased for natural flow."
+                 }
+               ]
              };
-         }
-         return t;
-     }));
+           }
+           return t;
+         }));
+       }
+     } catch (e) {
+       console.error("Sentence correction failed", e);
+     }
   };
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -244,17 +236,19 @@ const App: React.FC = () => {
   const timerRef = useRef<number | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>([]);
   const durationRef = useRef<number>(0);
-  const createdUrlsRef = useRef<Set<string>>(new Set());
+  const blobUrlsRef = useRef<Set<string>>(new Set());
+  const isEndingCallRef = useRef(false);
+  const isUserSpeakingRef = useRef(false);
 
-  const cleanupAudioUrls = useCallback(() => {
-    createdUrlsRef.current.forEach(url => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch {
-        // ignore errors if already revoked
-      }
-    });
-    createdUrlsRef.current.clear();
+  useEffect(() => {
+    isUserSpeakingRef.current = isUserSpeaking;
+  }, [isUserSpeaking]);
+
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      blobUrlsRef.current.clear();
+    };
   }, []);
 
   useEffect(() => {
@@ -264,26 +258,6 @@ const App: React.FC = () => {
   useEffect(() => {
     durationRef.current = duration;
   }, [duration]);
-
-  const isUserSpeakingRef = useRef(false);
-  useEffect(() => {
-    isUserSpeakingRef.current = isUserSpeaking;
-  }, [isUserSpeaking]);
-
-  // Audio, timer, and object URL cleanup on component unmount
-  useEffect(() => {
-    return () => {
-      if (liveClientRef.current) {
-        liveClientRef.current.disconnect().catch(console.error);
-        liveClientRef.current = null;
-      }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      cleanupAudioUrls();
-    };
-  }, [cleanupAudioUrls]);
 
   useEffect(() => {
     if (callState === CallState.ACTIVE) {
@@ -344,10 +318,10 @@ const App: React.FC = () => {
       return;
     }
 
+    isEndingCallRef.current = false;
     setCallState(CallState.CONNECTING);
     setErrorMsg(null);
     setTranscript([]);
-    cleanupAudioUrls();
 
     const scenario = overrideScenario || selectedScenario;
     const voice = overrideVoice || selectedVoice;
@@ -401,12 +375,14 @@ const App: React.FC = () => {
           return prev;
         });
         
-        // Only show dashboard if we actually had a meaningful conversation
-        const hasContent = transcriptRef.current.some(t => t.text.trim().length > 10);
-        if (hasContent) {
-          handleCallEnd();
-        } else {
-          setCallState(CallState.IDLE);
+        // Guard against duplicate end handler
+        if (!isEndingCallRef.current) {
+          const hasContent = transcriptRef.current.some(t => t.text.trim().length > 10);
+          if (hasContent) {
+            handleCallEnd();
+          } else {
+            setCallState(CallState.IDLE);
+          }
         }
       },
       onError: (err) => {
@@ -418,12 +394,15 @@ const App: React.FC = () => {
       onUserSpeaking: (speaking) => setIsUserSpeaking(speaking),
       onAudioData: (speaker, blob) => {
          const url = URL.createObjectURL(blob);
-         createdUrlsRef.current.add(url);
+         blobUrlsRef.current.add(url);
          setTranscript(prev => {
-             // Find the last item from this speaker and attach audio
              const updated = [...prev];
              for (let i = updated.length - 1; i >= 0; i--) {
                  if (updated[i].speaker === speaker) {
+                     if (updated[i].audioUrl) {
+                         URL.revokeObjectURL(updated[i].audioUrl!);
+                         blobUrlsRef.current.delete(updated[i].audioUrl!);
+                     }
                      updated[i] = { ...updated[i], audioUrl: url };
                      break;
                  }
@@ -432,7 +411,7 @@ const App: React.FC = () => {
          });
       },
       onTranscript: (speaker, text) => {
-        if (speaker === 'user' && isUserSpeaking) {
+        if (speaker === 'user' && isUserSpeakingRef.current) {
            const words = text.trim().split(/\s+/).filter(w => w.length > 0);
            userSpeechRef.current.wordCount += words.length;
            userSpeechRef.current.lastTranscriptTime = Date.now();
@@ -442,8 +421,8 @@ const App: React.FC = () => {
            if (fillers.length > 0) userSpeechRef.current.fillerCount += fillers.length;
 
            // Calculate speed
-           const elapsedMins = (Date.now() - userSpeechRef.current.startTime) / 60000;
-           const wpm = elapsedMins > 0 ? Math.round(userSpeechRef.current.wordCount / elapsedMins) : 120;
+           const elapsedMins = Math.max(0.1, (Date.now() - userSpeechRef.current.startTime) / 60000);
+           const wpm = Math.round(userSpeechRef.current.wordCount / elapsedMins);
            
            // Heuristic feedback
            let feedback = "Natural pacing";
@@ -452,13 +431,17 @@ const App: React.FC = () => {
            else if (userSpeechRef.current.fillerCount > 3) feedback = "Too many filler words";
            else if (text.length > 20) feedback = "Great pronunciation";
 
+           const fillerPenalty = Math.min(30, userSpeechRef.current.fillerCount * 5);
+           const pacingBonus = (wpm >= 100 && wpm <= 160) ? 10 : 0;
+           const confidenceCalc = Math.max(60, Math.min(98, 85 - fillerPenalty + pacingBonus));
+
            setMetrics(prev => ({
               ...prev,
-              speakingSpeed: wpm,
+              speakingSpeed: Math.min(220, Math.max(40, wpm)),
               fillerWords: fillers,
               currentFeedback: feedback,
               fluency: Math.max(50, 100 - (userSpeechRef.current.fillerCount * 5)),
-              pronunciationConfidence: Math.min(100, 85 + (text.length / 10))
+              pronunciationConfidence: confidenceCalc
            }));
         }
 
@@ -472,13 +455,19 @@ const App: React.FC = () => {
                 
                 // Heuristic for real-time vocabulary
                 let extra: any = {};
-                if (speaker === 'model' && updatedText.length > 40 && !lastItem.vocabulary) {
-                    const words = ["resilient", "pragmatic", "elaborate", "perspective"];
-                    const found = words.find(w => updatedText.toLowerCase().includes(w));
+                if (speaker === 'model' && updatedText.length > 30 && !lastItem.vocabulary) {
+                    const scenarioVocab = selectedScenario.vocabularyFocus.map(w => w.toLowerCase());
+                    const generalVocab = [
+                        "resilient", "pragmatic", "elaborate", "perspective", "innovative", 
+                        "comprehensive", "collaborate", "substantial", "fundamental", "fascinating",
+                        "efficient", "sustainable", "articulate", "crucial", "exceptional"
+                    ];
+                    const targetVocab = Array.from(new Set([...scenarioVocab, ...generalVocab]));
+                    const found = targetVocab.find(w => updatedText.toLowerCase().includes(w));
                     if (found) {
                         extra.vocabulary = [{ 
                             word: found.charAt(0).toUpperCase() + found.slice(1), 
-                            definition: "Click to see full explanation." 
+                            definition: "Target vocabulary highlighted for this context. Tap to save." 
                         }];
                     }
                 }
@@ -492,17 +481,30 @@ const App: React.FC = () => {
              }
            }
            
-           // New Turn
+           // New Turn with ESL grammar checking
            let corrections: any[] = [];
-           if (speaker === 'user' && text.toLowerCase().includes('i is')) {
-               corrections.push({ original: 'I is', corrected: 'I am', explanation: 'Use "am" with "I".' });
-           }
-           if (speaker === 'user' && text.toLowerCase().includes('he go')) {
-               corrections.push({ original: 'he go', corrected: 'he goes', explanation: 'Third person singular needs "es".' });
+           const grammarPatterns = [
+               { regex: /\bi is\b/i, original: 'I is', corrected: 'I am', explanation: 'Use "am" with the first person "I".' },
+               { regex: /\bhe go\b/i, original: 'he go', corrected: 'he goes', explanation: 'Third person singular present tense requires "-es".' },
+               { regex: /\bshe go\b/i, original: 'she go', corrected: 'she goes', explanation: 'Third person singular present tense requires "-es".' },
+               { regex: /\bthey is\b/i, original: 'they is', corrected: 'they are', explanation: 'Plural subject "they" requires "are".' },
+               { regex: /\bwe was\b/i, original: 'we was', corrected: 'we were', explanation: 'Plural past tense requires "were".' },
+               { regex: /\bhe have\b/i, original: 'he have', corrected: 'he has', explanation: 'Third person singular requires "has".' },
+               { regex: /\bshe have\b/i, original: 'she have', corrected: 'she has', explanation: 'Third person singular requires "has".' },
+               { regex: /\bmuch people\b/i, original: 'much people', corrected: 'many people', explanation: 'Use "many" with countable nouns like "people".' },
+               { regex: /\bi am agree\b/i, original: 'I am agree', corrected: 'I agree', explanation: '"Agree" is already a verb; omit "am".' },
+               { regex: /\bmore better\b/i, original: 'more better', corrected: 'better', explanation: '"Better" is already comparative; omit "more".' }
+           ];
+           if (speaker === 'user') {
+             for (const p of grammarPatterns) {
+               if (p.regex.test(text)) {
+                 corrections.push({ original: p.original, corrected: p.corrected, explanation: p.explanation });
+               }
+             }
            }
 
            return [...prev, {
-             id: Date.now().toString() + Math.random(),
+             id: crypto.randomUUID(),
              speaker,
              text,
              timestamp: new Date(),
@@ -525,44 +527,51 @@ const App: React.FC = () => {
   };
 
   const endCall = async () => {
+    if (isEndingCallRef.current) return;
+    const hasContent = transcriptRef.current.some(t => t.text.trim().length > 10);
     if (liveClientRef.current) {
       await liveClientRef.current.disconnect();
       liveClientRef.current = null;
     }
+    if (hasContent) {
+      await handleCallEnd();
+    } else {
+      setCallState(CallState.IDLE);
+    }
   };
 
   const handleCallEnd = async () => {
+    if (isEndingCallRef.current) return;
+    isEndingCallRef.current = true;
     setCallState(CallState.ENDED);
     setIsAnalyzing(true);
     
-    // Update Stats based on session duration
-    const minutes = Math.floor(durationRef.current / 60);
+    // Update Stats based on session duration & calculate streak
+    const minutes = Math.max(1, Math.floor(durationRef.current / 60));
     const currentTranscript = transcriptRef.current;
-    const gainedXp = (minutes * 100) + (currentTranscript.length * 5);
-    const now = new Date();
     
     setUserStats(prev => {
-      const lastActive = new Date(prev.lastActiveDate || now.toISOString());
-      const isSameDay = lastActive.toDateString() === now.toDateString();
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const isYesterday = lastActive.toDateString() === yesterday.toDateString();
-
-      let streak = prev.streak;
-      if (isYesterday) {
-        streak += 1;
-      } else if (!isSameDay) {
-        streak = 1;
+      const today = new Date().toISOString().split('T')[0];
+      const lastActive = prev.lastActiveDate ? prev.lastActiveDate.split('T')[0] : '';
+      let newStreak = prev.streak || 1;
+      if (lastActive && lastActive !== today) {
+        const diffDays = Math.round((new Date(today).getTime() - new Date(lastActive).getTime()) / (1000 * 3600 * 24));
+        if (diffDays === 1) {
+          newStreak += 1;
+        } else if (diffDays > 1) {
+          newStreak = 1;
+        }
       }
 
-      const newXp = prev.xp + gainedXp;
-      const newLevel = Math.max(prev.level, Math.floor(newXp / 500) + 1);
+      const newXp = prev.xp + (minutes * 100) + (currentTranscript.length * 5);
+      const newLevel = Math.max(1, Math.floor(newXp / 500) + 1);
 
       return {
         ...prev,
         xp: newXp,
         level: newLevel,
-        streak,
-        lastActiveDate: now.toISOString(),
+        streak: newStreak,
+        lastActiveDate: new Date().toISOString(),
         totalSpeakingMinutes: prev.totalSpeakingMinutes + minutes,
         dailyGoals: prev.dailyGoals.map(g => {
           if (g.type === 'speaking_minutes') return { ...g, current: g.current + minutes };
@@ -574,33 +583,19 @@ const App: React.FC = () => {
 
     if (currentTranscript.length > 0) {
         const r = await generateAnalysisReport(API_KEY, currentTranscript, selectedAccent.label, selectedScenario, selectedStyle, selectedLanguage.label);
+        r.averageWpm = metrics.speakingSpeed;
         setReport(r);
         
-        // Update long-term memory only if report generation succeeded
-        if (!r.isError) {
-          const updatedMemory = await updateUserMemory(API_KEY, userMemory, r, selectedScenario.title);
-          setUserMemory(updatedMemory);
-        }
+        // Update long-term memory
+        const updatedMemory = await updateUserMemory(API_KEY, userMemory, r, selectedScenario.title);
+        setUserMemory(updatedMemory);
     } else {
         setReport({
-            isError: false,
-            score: 0, fluencyScore: 0, vocabularyScore: 0, grammarScore: 0, accentMatchScore: 0,
-            vocabularyRichness: 0, confidenceScore: 0, grammarConsistency: 0, pacingScore: 0, fillerWordsDetected: 0,
-            summary: "No conversation detected.", highlights: [], weakPoints: [], suggestions: [], performanceData: [], corrections: []
+            score: 70, fluencyScore: 70, vocabularyScore: 70, grammarScore: 70, accentMatchScore: 70,
+            vocabularyRichness: 65, confidenceScore: 70, grammarConsistency: 70, pacingScore: 70, fillerWordsDetected: 0,
+            summary: "Session completed.", highlights: [], weakPoints: [], suggestions: [], performanceData: [70, 72, 75, 78, 80], corrections: [],
+            averageWpm: metrics.speakingSpeed
         });
-    }
-    setIsAnalyzing(false);
-  };
-
-  const handleRetryReport = async () => {
-    const currentTranscript = transcriptRef.current;
-    if (currentTranscript.length === 0) return;
-    setIsAnalyzing(true);
-    const r = await generateAnalysisReport(API_KEY, currentTranscript, selectedAccent.label, selectedScenario, selectedStyle, selectedLanguage.label);
-    setReport(r);
-    if (!r.isError) {
-      const updatedMemory = await updateUserMemory(API_KEY, userMemory, r, selectedScenario.title);
-      setUserMemory(updatedMemory);
     }
     setIsAnalyzing(false);
   };
@@ -614,13 +609,15 @@ const App: React.FC = () => {
   };
 
   const reset = () => {
-    cleanupAudioUrls();
+    isEndingCallRef.current = false;
     setCallState(CallState.IDLE);
     setVolume(0);
     setDuration(0);
     setMimicPhrase(null);
     setTranscript([]);
     setReport(null);
+    blobUrlsRef.current.forEach(u => URL.revokeObjectURL(u));
+    blobUrlsRef.current.clear();
   };
 
   const handleMimicAttempt = async (audioBlob: Blob) => {
@@ -666,7 +663,7 @@ const App: React.FC = () => {
                     <p className="text-gray-500">Analyzing grammar, fluency, and accent...</p>
                 </div>
             ) : report ? (
-                <ReportCard report={report} onClose={reset} onRetry={handleRetryReport} />
+                <ReportCard report={report} onClose={reset} averageWpm={metrics.speakingSpeed} />
             ) : (
                 <div className="flex-1 flex flex-col items-center justify-center">
                      <p className="text-red-400">Analysis failed.</p>
@@ -689,40 +686,13 @@ const App: React.FC = () => {
         
         {/* Left Sidebar - Configuration */}
         {callState === CallState.IDLE && (
-          <>
-            {/* Mobile Setup Floating Pill (shown only on < lg) */}
-            <div className="lg:hidden fixed top-4 right-4 z-40">
-              <button 
-                onClick={() => setShowMobileSetup(prev => !prev)}
-                aria-label="Toggle session setup drawer"
-                aria-expanded={showMobileSetup}
-                className="px-4 py-2 bg-[#1e1e20]/95 backdrop-blur-md text-emerald-400 border border-emerald-500/30 rounded-2xl shadow-2xl flex items-center gap-2 font-bold text-xs uppercase tracking-wider"
-              >
-                <Sliders size={14} />
-                <span>{showMobileSetup ? 'Close' : 'Setup'}</span>
-              </button>
-            </div>
-
-            {/* Sidebar Container */}
-            <div className={`
-              ${showMobileSetup ? 'fixed inset-0 z-50 flex flex-col bg-[#1a1a1c]' : 'hidden'}
-              lg:relative lg:flex lg:w-[360px] border-r border-[#2a2a2c] bg-[#1a1a1c] flex-col overflow-hidden shrink-0 shadow-2xl
-            `}>
+            <div className="w-[360px] border-r border-[#2a2a2c] bg-[#1a1a1c] flex flex-col overflow-hidden shrink-0 shadow-2xl">
                 <div className="p-4 border-b border-[#2a2a2c] flex items-center justify-between bg-[#1e1e20]">
                     <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">SESSION SETUP</h2>
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1">
-                            <div className={`w-1 h-1 rounded-full ${setupTab === 'language' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
-                            <div className={`w-1 h-1 rounded-full ${setupTab === 'coach' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
-                            <div className={`w-1 h-1 rounded-full ${setupTab === 'scenario' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
-                        </div>
-                        <button 
-                          onClick={() => setShowMobileSetup(false)}
-                          aria-label="Close session setup drawer"
-                          className="lg:hidden p-1 text-gray-400 hover:text-white rounded-lg"
-                        >
-                          <X size={16} />
-                        </button>
+                    <div className="flex items-center gap-1">
+                        <div className={`w-1 h-1 rounded-full ${setupTab === 'language' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                        <div className={`w-1 h-1 rounded-full ${setupTab === 'coach' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
+                        <div className={`w-1 h-1 rounded-full ${setupTab === 'scenario' ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
                     </div>
                 </div>
 
@@ -813,7 +783,7 @@ const App: React.FC = () => {
 
                             <div className="bg-blue-600/5 rounded-2xl p-4 border border-blue-500/10 mt-auto">
                                 <p className="text-[10px] text-blue-400/70 leading-relaxed font-medium italic">
-                                    "I will help you master {selectedLanguage.label} with a {selectedAccent.label} influence through natural conversation."
+                                    {`"I will help you master ${selectedLanguage.label} with a ${selectedAccent.label} influence through natural conversation."`}
                                 </p>
                             </div>
                         </div>
@@ -877,7 +847,7 @@ const App: React.FC = () => {
                                     Coach Profile
                                 </h4>
                                 <p className="text-xs text-gray-400 leading-relaxed italic relative z-10">
-                                    "{PERSONALITIES[selectedVoice.personality as keyof typeof PERSONALITIES] || PERSONALITIES.friendly}"
+                                    {`"${PERSONALITIES[selectedVoice.personality as keyof typeof PERSONALITIES] || PERSONALITIES.friendly}"`}
                                 </p>
                             </div>
                         </div>
@@ -964,7 +934,6 @@ const App: React.FC = () => {
                     )}
                 </div>
             </div>
-          </>
         )}
 
         {/* Center Stage - Visualizer or Call Info */}
@@ -980,45 +949,32 @@ const App: React.FC = () => {
                 {callState === CallState.IDLE ? (
                     <div className="z-10 w-full max-w-4xl px-6 animate-fade-in flex flex-col items-center">
                         {/* Tab Switcher */}
-                        <div className="flex gap-1 bg-[#1a1a1c] p-1.5 rounded-2xl border border-white/10 mb-8 sm:mb-12 w-fit max-w-full overflow-x-auto shadow-2xl">
+                        <div className="flex gap-1.5 bg-[#1a1a1c] p-1.5 rounded-2xl border border-white/10 mb-12 w-fit shadow-2xl">
                             <button 
                                 onClick={() => setActiveTab('scenarios')}
-                                aria-label="Explore scenarios library"
-                                aria-pressed={activeTab === 'scenarios'}
-                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-tight transition-all flex items-center gap-2 shrink-0 ${activeTab === 'scenarios' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                className={`px-6 py-2.5 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center gap-2.5 ${activeTab === 'scenarios' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <Compass size={14} />
                                 Library
                             </button>
                             <button 
                                 onClick={() => setActiveTab('stats')}
-                                aria-label="View speaking performance dashboard"
-                                aria-pressed={activeTab === 'stats'}
-                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 shrink-0 ${activeTab === 'stats' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2.5 ${activeTab === 'stats' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <BarChart2 size={14} />
                                 Performance
                             </button>
                             <button 
-                                onClick={() => {
-                                    setActiveTab('coach');
-                                    setHasUnreadInsights(false);
-                                }}
-                                aria-label="View personalized AI tutor insights"
-                                aria-pressed={activeTab === 'coach'}
-                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-tight transition-all flex items-center gap-2 relative shrink-0 ${activeTab === 'coach' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                onClick={() => setActiveTab('coach')}
+                                className={`px-6 py-2.5 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center gap-2.5 relative ${activeTab === 'coach' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <Sparkles size={14} />
                                 Insights
-                                {hasUnreadInsights && (
-                                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-orange-500 border-2 border-[#131314]"></span>
-                                )}
+                                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-orange-500 border-2 border-[#131314]"></span>
                             </button>
                             <button 
                                 onClick={() => setActiveTab('pronunciation')}
-                                aria-label="Open speech lab mimic trainer"
-                                aria-pressed={activeTab === 'pronunciation'}
-                                className={`px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-tight transition-all flex items-center gap-2 shrink-0 ${activeTab === 'pronunciation' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
+                                className={`px-6 py-2.5 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center gap-2.5 ${activeTab === 'pronunciation' ? 'bg-emerald-500 text-[#131314]' : 'text-gray-400 hover:text-gray-200'}`}
                             >
                                 <Mic2 size={14} />
                                 Speech Lab
@@ -1054,11 +1010,6 @@ const App: React.FC = () => {
                                                 <Zap size={14} className="mr-2 text-orange-500" fill="currentColor" />
                                                 Surprise Selection
                                             </button>
-
-                                            <div className="flex items-center justify-center lg:justify-start gap-2 pt-1 text-[11px] text-gray-500">
-                                                <Shield size={13} className="text-emerald-500/80 shrink-0" />
-                                                <span>Audio streams securely to Gemini Live API. No audio recordings stored.</span>
-                                            </div>
                                         </div>
                                     </div>
 
@@ -1235,23 +1186,14 @@ const App: React.FC = () => {
             )}
         </div>
 
-        {/* Right Sidebar / Mobile Bottom Sheet - Transcript (Visible during call) */}
+        {/* Right Sidebar - Transcript (Visible during call) */}
         {showTranscript && (callState === CallState.ACTIVE || callState === CallState.CONNECTING) && (
-            <div className="fixed inset-x-0 bottom-24 max-h-[55vh] z-40 lg:static lg:w-96 lg:max-h-full border-t lg:border-t-0 lg:border-l border-[#444746] bg-[#1a1a1c] flex flex-col overflow-hidden shrink-0 transition-all duration-300 shadow-2xl rounded-t-3xl lg:rounded-none">
-                <div className="p-4 border-b border-[#444746] flex justify-between items-center bg-[#1e1e20]">
-                    <div className="flex items-center gap-2">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Live Transcript</h3>
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    </div>
-                    <button 
-                      onClick={() => setShowTranscript(false)}
-                      aria-label="Close transcript view"
-                      className="p-1 rounded-lg text-gray-400 hover:text-white lg:hidden"
-                    >
-                      <X size={16} />
-                    </button>
+            <div className="w-96 border-l border-[#444746] bg-[#1a1a1c] flex flex-col overflow-hidden shrink-0 transition-all duration-300">
+                <div className="p-4 border-b border-[#444746] flex justify-between items-center">
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Live Transcript</h3>
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                 </div>
-                <div className="flex-1 overflow-hidden relative h-64 lg:h-auto">
+                <div className="flex-1 overflow-hidden relative">
                     <div className="absolute inset-0">
                         <Transcript 
                             items={transcript} 
@@ -1279,7 +1221,15 @@ const App: React.FC = () => {
                       <AlertCircle size={28} className="text-rose-500" />
                   </div>
                   <div className="flex-1">
-                      <h3 className="text-sm font-bold text-rose-500 uppercase tracking-widest mb-1">Hardware Error</h3>
+                      <h3 className="text-sm font-bold text-rose-500 uppercase tracking-widest mb-1">
+                          {errorMsg.toLowerCase().includes('mic') || errorMsg.toLowerCase().includes('permission') 
+                              ? 'Microphone Access Error' 
+                              : errorMsg.toLowerCase().includes('key') 
+                              ? 'API Key Notice' 
+                              : errorMsg.toLowerCase().includes('network') || errorMsg.toLowerCase().includes('connect')
+                              ? 'Connection Notice'
+                              : 'Session Notice'}
+                      </h3>
                       <p className="text-gray-300 text-sm font-medium leading-relaxed">{errorMsg}</p>
                   </div>
                   <button 

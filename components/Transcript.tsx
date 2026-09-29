@@ -174,18 +174,21 @@ interface WordWithTooltipProps {
 
 const WordWithTooltip: React.FC<WordWithTooltipProps> = ({ word, onSave, isUser }) => {
     const [showTooltip, setShowTooltip] = useState(false);
+    const [saved, setSaved] = useState(false);
     const cleanWord = word.replace(/[.,/#!$%^&*;:{}=\-_`~()]/g,"");
 
     const handleWordClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (window.confirm(`Would you like to save "${cleanWord}" to your vocabulary?`)) {
+        if (cleanWord.length > 1) {
             onSave?.(cleanWord);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2200);
         }
     };
 
     return (
         <span 
-            className="relative inline-block mr-1 cursor-pointer hover:text-blue-300 transition-colors"
+            className={`relative inline-block mr-1 cursor-pointer transition-colors ${saved ? 'text-emerald-400 font-medium' : 'hover:text-blue-300'}`}
             onClick={handleWordClick}
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
@@ -201,12 +204,12 @@ const WordWithTooltip: React.FC<WordWithTooltipProps> = ({ word, onSave, isUser 
                     >
                         <div className="flex justify-between items-start mb-2">
                             <span className="font-bold text-blue-400 text-sm">{cleanWord}</span>
-                            <div className="text-yellow-400">
-                                <span className="material-icons-round text-sm">bookmark_add</span>
+                            <div className={saved ? "text-emerald-400" : "text-yellow-400"}>
+                                <span className="material-icons-round text-sm">{saved ? 'check_circle' : 'bookmark_add'}</span>
                             </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                            Tap to save this word to your persistent vocabulary list.
+                        <p className={`text-[10px] leading-tight ${saved ? 'text-emerald-400 font-bold' : 'text-gray-400'}`}>
+                            {saved ? 'Saved to vocabulary list!' : 'Tap to save this word to your persistent vocabulary list.'}
                         </p>
                     </motion.div>
                 )}
